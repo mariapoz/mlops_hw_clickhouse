@@ -1,0 +1,8 @@
+<!-- Настройки librdkafka для Kafka-движка ClickHouse.
+     earliest: новая consumer group читает топик с самого начала,
+     поэтому данные, загруженные продюсером до создания таблиц, не теряются. -->
+<clickhouse>
+    <kafka>
+        <auto_offset_reset>earliest</auto_offset_reset>
+    </kafka>
+</clickhouse>

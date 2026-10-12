@@ -1,0 +1,116 @@
+services:
+  # Zookeeper (нужен Kafka этой версии)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.3.0
+    networks:
+      - ch-net
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  # Брокер Kafka: внутри docker-сети доступен как kafka:9092, с хоста как localhost:9095
+  kafka:
+    image: confluentinc/cp-kafka:7.3.0
+    depends_on:
+      - zookeeper
+    networks:
+      - ch-net
+    ports:
+      - "9095:9095"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:9095
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    healthcheck:
+      test: ["CMD", "kafka-topics", "--bootstrap-server", "localhost:9095", "--list"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+
+  # Создаёт топик transactions и завершается
+  kafka-setup:
+    image: confluentinc/cp-kafka:7.3.0
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - ch-net
+    restart: on-failure
+    entrypoint: ["/bin/bash", "-c"]
+    command: |
+      "
+      kafka-topics --bootstrap-server kafka:9092 --create --if-not-exists --topic transactions --partitions 3 --replication-factor 1
+      kafka-topics --bootstrap-server kafka:9092 --list
+      "
+
+  # Веб-интерфейс для просмотра топиков: http://localhost:8080
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    depends_on:
+      - kafka
+    networks:
+      - ch-net
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+
+  # ClickHouse: при первом старте выполняет DDL из sql/01 и sql/02
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8
+    depends_on:
+      kafka-setup:
+        condition: service_completed_successfully  # топик должен существовать до подписки
+    networks:
+      - ch-net
+    ports:
+      - "8123:8123"   # HTTP
+      - "9000:9000"   # native (clickhouse-client)
+    environment:
+      CLICKHOUSE_SKIP_USER_SETUP: 1   # пользователь default без пароля (учебный проект)
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - ./sql/01_ddl.sql:/docker-entrypoint-initdb.d/01_ddl.sql:ro
+      - ./sql/02_ddl_optimized.sql:/docker-entrypoint-initdb.d/02_ddl_optimized.sql:ro
+      - ./clickhouse/kafka.xml:/etc/clickhouse-server/config.d/kafka.xml:ro
+      - clickhouse-data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD", "clickhouse-client", "-q", "SELECT 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Загрузка CSV в Kafka. Не стартует на `up`, запускается отдельно:
+  #   docker compose run --rm producer
+  producer:
+    build:
+      context: .
+      dockerfile: producer/Dockerfile
+    profiles: ["producer"]
+    depends_on:
+      kafka-setup:
+        condition: service_completed_successfully
+    networks:
+      - ch-net
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC: transactions
+      CSV_PATH: /data/train.csv
+    volumes:
+      - ./data:/data:ro
+
+networks:
+  ch-net:
+    name: ch-net
+    driver: bridge
+
+volumes:
+  clickhouse-data:
