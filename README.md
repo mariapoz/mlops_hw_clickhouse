@@ -1,29 +1,3 @@
-# Kafka → ClickHouse: транзакции по штатам
-
-Домашнее задание №2 курса MLOps МТС ШАД 2025. Транзакции из CSV загружаются в Kafka, ClickHouse читает топик и складывает данные в таблицы. По этим таблицам считается категория наибольшей транзакции в каждом штате, и хранение оптимизировано под этот запрос.
-
-Данные: `train.csv` из соревнования [teta-ml-1-2025](https://www.kaggle.com/competitions/teta-ml-1-2025), 786 431 транзакция.
-
-## Архитектура
-
-```
- data/train.csv
-      │  producer/load_to_kafka.py      (п.1)
-      ▼
- Kafka: топик transactions  (JSON, одна строка CSV = одно сообщение)
-      │
-      ▼
- ClickHouse
-   fraud.transactions_queue   ENGINE = Kafka        ← читает топик        (п.2)
-      ├─ MV transactions_basic_mv ─► fraud.transactions_basic   без оптимизаций (п.2)
-      └─ MV transactions_mv       ─► fraud.transactions         оптимизированная (п.4)
-                                          │
-                                          ▼
-                    sql/03_top_category_by_state.sql  →  results/top_category_by_state.csv  (п.3)
-```
-
-Таблица с движком Kafka сама ничего не хранит: это «окно» в топик. Materialized view срабатывает на каждый прочитанный блок сообщений и вставляет его в MergeTree-таблицу, где данные и хранятся. К одной Kafka-таблице подключены два MV, поэтому каждое сообщение попадает в обе таблицы, и их удобно сравнивать на одинаковых данных.
-
 ## Что где лежит
 
 | Пункт задания | Файл |
@@ -137,26 +111,6 @@ ClickHouse 24.8, полный `train.csv`, медиана из 100 запуск�
 | `transactions` (п.4) | **4 мс** | **51** | 24 МБ |
 
 Отдельные колонки после оптимизации: `us_state` занимала 1.2 МБ, стала 4 КБ; `cat_id` 2.1 МБ → 8 КБ; `merch` 6.2 МБ → 1.5 МБ.
-
-### Как проверить самому
-
-```bash
-# Размер таблиц
-docker compose exec clickhouse clickhouse-client -q "
-  SELECT table, sum(rows) AS rows, formatReadableSize(sum(data_compressed_bytes)) AS on_disk
-  FROM system.parts WHERE database = 'fraud' AND active GROUP BY table"
-
-# Запрос читает проекцию: в плане есть ReadFromMergeTree (max_amount_by_state)
-docker compose exec clickhouse clickhouse-client -q "
-  EXPLAIN SELECT us_state, argMax(cat_id, amount), max(amount)
-  FROM fraud.transactions GROUP BY us_state"
-
-# Скорость: базовая таблица против оптимизированной
-docker compose exec clickhouse clickhouse benchmark -i 50 --query "
-  SELECT us_state, argMax(cat_id, amount), max(amount) FROM fraud.transactions_basic GROUP BY us_state"
-docker compose exec clickhouse clickhouse benchmark -i 50 --query "
-  SELECT us_state, argMax(cat_id, amount), max(amount) FROM fraud.transactions GROUP BY us_state"
-```
 
 ## Остановка
 
