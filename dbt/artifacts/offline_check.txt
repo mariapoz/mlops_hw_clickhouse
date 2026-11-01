@@ -1,0 +1,5 @@
+PASS: 7 compiled models and 84 data-test queries on synthetic data
+PASS: fixture logic customer_risk_thresholds
+PASS: fixture logic staging_amount_and_calendar_boundaries
+Engine: 26.9.2.1
+Not executed: dbt materializations/unit-test runner, real dataset, dbt Docs catalog.

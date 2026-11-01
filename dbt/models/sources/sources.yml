@@ -1,0 +1,18 @@
+version: 2
+sources:
+  - name: raw
+    description: Транзакции из Kafka, загруженные прошлой домашней работой.
+    schema: "{{ env_var('DBT_SOURCE_SCHEMA', 'fraud') }}"
+    tables:
+      - name: transactions
+        description: Исходные транзакции; чтение без изменения данных.
+        columns:
+          - name: transaction_time
+            tests: [not_null]
+          - name: target
+            tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: [0, 1]
+                    quote: false

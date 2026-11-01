@@ -1,0 +1,603 @@
+{
+  "version": 2,
+  "models": [
+    {
+      "name": "stg_transactions",
+      "description": "Одна строка на исходную транзакцию. Дубликаты не удаляются: надёжного transaction_id нет; ошибки выявляются тестами.",
+      "columns": [
+        {
+          "name": "transaction_time",
+          "description": "Время в часовом поясе исходного ClickHouse; преобразования зоны нет.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "merchant",
+          "description": "Нормализованное имя мерчанта.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "category",
+          "description": "Категория в нижнем регистре.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "amount",
+          "description": "Сумма в единицах исходного датасета.",
+          "tests": [
+            "not_null",
+            {
+              "dbt_expectations.expect_column_values_to_be_between": {
+                "arguments": {
+                  "min_value": 0
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "state",
+          "description": "Код штата; допускается DC.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "gender",
+          "description": "Пол из исходных данных.",
+          "tests": [
+            "not_null",
+            {
+              "accepted_values": {
+                "arguments": {
+                  "values": [
+                    "M",
+                    "F"
+                  ],
+                  "quote": true
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "is_fraud",
+          "description": "Разметка мошенничества: 1 = фрод.",
+          "tests": [
+            "not_null",
+            {
+              "accepted_values": {
+                "arguments": {
+                  "values": [
+                    0,
+                    1
+                  ],
+                  "quote": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "lat",
+          "description": "Широта клиента.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "lon",
+          "description": "Долгота клиента.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "merchant_lat",
+          "description": "Широта мерчанта.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "merchant_lon",
+          "description": "Долгота мерчанта.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "customer_id",
+          "description": "Прокси клиента: хеш имени, фамилии и координат; не гарантирует идентичность человека.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "transaction_date",
+          "description": "Дата транзакции.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "transaction_hour",
+          "description": "Час 0–23.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "day_of_week",
+          "description": "ISO день недели: понедельник 1, воскресенье 7.",
+          "tests": [
+            "not_null",
+            {
+              "accepted_values": {
+                "arguments": {
+                  "values": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    7
+                  ],
+                  "quote": false
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "amount_bucket",
+          "description": "SMALL <100; MEDIUM [100,1000); LARGE >=1000.",
+          "tests": [
+            "not_null",
+            {
+              "accepted_values": {
+                "arguments": {
+                  "values": [
+                    "SMALL",
+                    "MEDIUM",
+                    "LARGE"
+                  ],
+                  "quote": true
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "tests": []
+    },
+    {
+      "name": "mart_daily_state_metrics",
+      "description": "Агрегированная витрина. Зерно: transaction_date, state.",
+      "columns": [
+        {
+          "name": "transaction_date",
+          "description": "Дата транзакции.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "state",
+          "description": "Код штата; допускается DC.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "transaction_count",
+          "description": "Число транзакций.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "total_amount",
+          "description": "Сумма всех транзакций.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "avg_amount",
+          "description": "Средняя сумма транзакции.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "p95_amount",
+          "description": "Точный квантиль 0.95.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "large_transaction_share",
+          "description": "Процент транзакций с суммой >=1000.",
+          "tests": [
+            "not_null"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "dbt_utils.unique_combination_of_columns": {
+            "arguments": {
+              "combination_of_columns": [
+                "transaction_date",
+                "state"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "mart_fraud_by_category",
+      "description": "Агрегированная витрина. Зерно: category.",
+      "columns": [
+        {
+          "name": "category",
+          "description": "Категория в нижнем регистре.",
+          "tests": [
+            "not_null",
+            "unique"
+          ]
+        },
+        {
+          "name": "transaction_count",
+          "description": "Число транзакций.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "fraud_count",
+          "description": "Число транзакций с меткой фрода.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "fraud_rate",
+          "description": "Доля фрода в процентах 0–100.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "total_amount",
+          "description": "Сумма всех транзакций.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "fraud_amount",
+          "description": "Сумма фродовых транзакций.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "avg_amount",
+          "description": "Средняя сумма транзакции.",
+          "tests": [
+            "not_null"
+          ]
+        }
+      ],
+      "tests": []
+    },
+    {
+      "name": "mart_fraud_by_state",
+      "description": "Агрегированная витрина. Зерно: state.",
+      "columns": [
+        {
+          "name": "state",
+          "description": "Код штата; допускается DC.",
+          "tests": [
+            "not_null",
+            "unique"
+          ]
+        },
+        {
+          "name": "transaction_count",
+          "description": "Число транзакций.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "fraud_count",
+          "description": "Число транзакций с меткой фрода.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "fraud_rate",
+          "description": "Доля фрода в процентах 0–100.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "total_amount",
+          "description": "Сумма всех транзакций.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "fraud_amount",
+          "description": "Сумма фродовых транзакций.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "avg_amount",
+          "description": "Средняя сумма транзакции.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "unique_customers",
+          "description": "Число уникальных прокси клиентов.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "unique_merchants",
+          "description": "Число уникальных мерчантов.",
+          "tests": [
+            "not_null"
+          ]
+        }
+      ],
+      "tests": []
+    },
+    {
+      "name": "mart_customer_risk_profile",
+      "description": "Агрегированная витрина. Зерно: customer_id.",
+      "columns": [
+        {
+          "name": "customer_id",
+          "description": "Прокси клиента: хеш имени, фамилии и координат; не гарантирует идентичность человека.",
+          "tests": [
+            "not_null",
+            "unique"
+          ]
+        },
+        {
+          "name": "transaction_count",
+          "description": "Число транзакций.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "fraud_count",
+          "description": "Число транзакций с меткой фрода.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "fraud_rate",
+          "description": "Доля фрода в процентах 0–100.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "total_amount",
+          "description": "Сумма всех транзакций.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "avg_amount",
+          "description": "Средняя сумма транзакции.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "first_transaction_at",
+          "description": "Первая транзакция клиента.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "last_transaction_at",
+          "description": "Последняя транзакция клиента.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "risk_level",
+          "description": "HIGH при fraud_rate >=5%; MEDIUM при хотя бы одном фроде; иначе LOW.",
+          "tests": [
+            "not_null",
+            {
+              "accepted_values": {
+                "arguments": {
+                  "values": [
+                    "HIGH",
+                    "MEDIUM",
+                    "LOW"
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "tests": []
+    },
+    {
+      "name": "mart_hourly_fraud_pattern",
+      "description": "Агрегированная витрина. Зерно: day_of_week, transaction_hour.",
+      "columns": [
+        {
+          "name": "day_of_week",
+          "description": "ISO день недели: понедельник 1, воскресенье 7.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "transaction_hour",
+          "description": "Час 0–23.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "transaction_count",
+          "description": "Число транзакций.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "fraud_count",
+          "description": "Число транзакций с меткой фрода.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "fraud_rate",
+          "description": "Доля фрода в процентах 0–100.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "total_amount",
+          "description": "Сумма всех транзакций.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "fraud_amount",
+          "description": "Сумма фродовых транзакций.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "avg_amount",
+          "description": "Средняя сумма транзакции.",
+          "tests": [
+            "not_null"
+          ]
+        }
+      ],
+      "tests": [
+        {
+          "dbt_utils.unique_combination_of_columns": {
+            "arguments": {
+              "combination_of_columns": [
+                "day_of_week",
+                "transaction_hour"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "mart_merchant_analytics",
+      "description": "Агрегированная витрина. Зерно: merchant.",
+      "columns": [
+        {
+          "name": "merchant",
+          "description": "Нормализованное имя мерчанта.",
+          "tests": [
+            "not_null",
+            "unique"
+          ]
+        },
+        {
+          "name": "transaction_count",
+          "description": "Число транзакций.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "fraud_count",
+          "description": "Число транзакций с меткой фрода.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "fraud_rate",
+          "description": "Доля фрода в процентах 0–100.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "total_amount",
+          "description": "Сумма всех транзакций.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "fraud_amount",
+          "description": "Сумма фродовых транзакций.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "avg_amount",
+          "description": "Средняя сумма транзакции.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "unique_customers",
+          "description": "Число уникальных прокси клиентов.",
+          "tests": [
+            "not_null"
+          ]
+        },
+        {
+          "name": "is_suspicious",
+          "description": "Эвристика: >=20 транзакций и fraud_rate >=5%.",
+          "tests": [
+            "not_null"
+          ]
+        }
+      ],
+      "tests": []
+    }
+  ]
+}

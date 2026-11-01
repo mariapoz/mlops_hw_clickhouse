@@ -1,0 +1,52 @@
+version: 2
+unit_tests:
+  - name: customer_risk_thresholds
+    description: Проверка порога HIGH=5%, MEDIUM при положительном фроде и LOW без фрода.
+    model: mart_customer_risk_profile
+    given:
+      - input: ref('stg_transactions')
+        format: sql
+        rows: |
+          select
+              arrayJoin(range(100)) as n,
+              'high' as customer_id,
+              toUInt8(n < 5) as is_fraud,
+              toFloat64(100) as amount,
+              toDateTime('2024-01-01 12:00:00') as transaction_time
+          union all
+          select
+              arrayJoin(range(100)) as n,
+              'medium' as customer_id,
+              toUInt8(n < 1) as is_fraud,
+              toFloat64(100) as amount,
+              toDateTime('2024-01-01 12:00:00') as transaction_time
+          union all
+          select 0, 'low', toUInt8(0), toFloat64(100), toDateTime('2024-01-01 12:00:00')
+    expect:
+      rows:
+        - {customer_id: high, fraud_rate: 5.0, risk_level: HIGH}
+        - {customer_id: medium, fraud_rate: 1.0, risk_level: MEDIUM}
+        - {customer_id: low, fraud_rate: 0.0, risk_level: LOW}
+  - name: staging_amount_and_calendar_boundaries
+    description: Границы сегментов суммы, нормализация текста, воскресенье ISO=7 и полночь.
+    model: stg_transactions
+    given:
+      - input: source('raw', 'transactions')
+        format: sql
+        rows: |
+          select
+              arrayJoin([0.0, 99.99, 100.0, 999.99, 1000.0]) as amount,
+              toDateTime('2024-01-07 00:00:00') as transaction_time,
+              ' Shop ' as merch, ' FOOD ' as cat_id,
+              ' Ann ' as name_1, ' Smith ' as name_2,
+              ' f ' as gender, ' dc ' as us_state,
+              38.9 as lat, -77.0 as lon,
+              39.0 as merchant_lat, -77.1 as merchant_lon,
+              toUInt8(0) as target
+    expect:
+      rows:
+        - {amount: 0.0, amount_bucket: SMALL, merchant: Shop, category: food, state: DC, gender: F, day_of_week: 7, transaction_hour: 0}
+        - {amount: 99.99, amount_bucket: SMALL, merchant: Shop, category: food, state: DC, gender: F, day_of_week: 7, transaction_hour: 0}
+        - {amount: 100.0, amount_bucket: MEDIUM, merchant: Shop, category: food, state: DC, gender: F, day_of_week: 7, transaction_hour: 0}
+        - {amount: 999.99, amount_bucket: MEDIUM, merchant: Shop, category: food, state: DC, gender: F, day_of_week: 7, transaction_hour: 0}
+        - {amount: 1000.0, amount_bucket: LARGE, merchant: Shop, category: food, state: DC, gender: F, day_of_week: 7, transaction_hour: 0}
