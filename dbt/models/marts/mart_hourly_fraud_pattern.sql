@@ -1,5 +1,6 @@
 select
-    day_of_week, transaction_hour,
+    day_of_week,
+    transaction_hour,
     count() as transaction_count,
     countIf(is_fraud = 1) as fraud_count,
     100.0 * countIf(is_fraud = 1) / count() as fraud_rate,

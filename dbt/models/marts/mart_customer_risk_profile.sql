@@ -11,6 +11,7 @@ with customer_metrics as (
     from {{ ref('stg_transactions') }}
     group by customer_id
 )
+
 select
     *,
     case
