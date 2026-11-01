@@ -1,21 +1,5 @@
 # Домашняя работа: dbt + ClickHouse
 
-Проект рассчитан на критерии 10 баллов: staging, шесть витрин, собственный макрос,
-три пакета, описания и тесты, два unit-теста, sqlfluff, pre-commit и Makefile.
-Для сдачи нужно выполнить полный запуск на реальных данных и приложить его лог и скриншот DAG.
-
-## Как это устроено
-
-`source('raw', 'transactions')` → `stg_transactions` → шесть `mart_*`.
-Staging — view, витрины — таблицы MergeTree, пересоздаваемые при dbt run/build.
-Исходная таблица читается без изменений. Инкрементальная загрузка здесь не требуется.
-
-В исходном репозитории данные находятся в `fraud.transactions`, поэтому это значение по умолчанию.
-Если преподаватель требует именно `transactions_db.transactions`, укажите
-`export DBT_SOURCE_SCHEMA=transactions_db` и предварительно обеспечьте наличие таблицы с данными в этой базе.
-В ClickHouse параметр dbt `schema` означает базу данных.
-Результаты создаются в отдельной базе `fraud_analytics`.
-
 ## Запуск из существующего репозитория
 
 Распакуйте каталог `dbt/` в корень `mlops_hw_clickhouse`.
@@ -23,7 +7,7 @@ Staging — view, витрины — таблицы MergeTree, пересозд�
 
 ```bash
 docker compose up -d
-# Только если train.csv ещё не загружен (повторная загрузка создаёт дубликаты):
+# Если train.csv ещё не загружен:
 docker compose run --rm producer
 
 docker compose exec clickhouse clickhouse-client -q 'SELECT count() FROM fraud.transactions'
@@ -64,8 +48,7 @@ Seeds в решении не используются: справочник шт
 | DBT_SOURCE_SCHEMA | fraud | База исходных данных |
 | DBT_SCHEMA | fraud_analytics | База результатов |
 
-Профиль рассчитан на локальный учебный Docker, HTTP 8123 без TLS.
-В Docker-контейнере localhost не указывает на другой контейнер; для такой установки нужен DBT_HOST=clickhouse и общая сеть.
+Профиль рассчитан на локальный учебный Docker, HTTP 8123 без TLS
 
 ## Витрины и определения
 
@@ -110,29 +93,3 @@ pre-commit run --config dbt/.pre-commit-config.yaml --all-files
 
 SQLFluff использует dbt templater, поэтому для `make lint` требуется доступный ClickHouse.
 `make fix` применяет исправления форматирования; после него повторите `make lint` и `make build`.
-
-## Что проверено при подготовке
-
-- dbt-core 1.10.23; dbt-clickhouse 1.9.8; SQLFluff 3.5.0.
-- Успешны `dbt deps`, `dbt parse`, компиляция моделей и data tests без обращения к БД.
-- Все 7 скомпилированных моделей и 84 SQL-запроса data tests выполнены на синтетических данных в chDB (ClickHouse 26.9.2.1).
-- Обе SQL-фикстуры unit-тестов отдельно выполнены с реальным скомпилированным SQL моделей; результаты совпали с expect.
-- Лог: `artifacts/offline_check.txt`. Это НЕ лог успешного `dbt test` на исходном датасете.
-- В этой среде нет работающего сервера исходного проекта. Не проверены dbt materializations,
-  штатный runner unit-тестов, исходный датасет и совместимость выполнения с ClickHouse 24.8.
-- SQLFluff с dbt templater остановился из-за недоступности localhost:8123; успешный lint не заявляется.
-- Docs с пустым каталогом сгенерированы для проверки сборки документации; перед сдачей выполните обычный `make docs`.
-
-Повторение дополнительной проверки (не требуется для обычного запуска):
-
-```bash
-pip install chdb==4.4.0
-dbt compile --profiles-dir . --no-populate-cache --no-introspect --select resource_type:model resource_type:test
-python scripts/verify_offline.py
-```
-
-## Сдача
-
-Создайте отдельную ветку, добавьте `dbt/` и откройте PR. Основа текста — `PR_DESCRIPTION.md`.
-Замените поля с результатами фактическими логами, приложите скриншот dbt Docs.
-Не добавляйте в Git `target/`, `dbt_packages/`, пароли или сам датасет.
