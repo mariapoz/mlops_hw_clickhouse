@@ -1,1 +1,2 @@
-select 1 as empty_source where (select count() from {{ source('raw', 'transactions') }}) = 0
+select 1 as empty_source
+where (select count() from {{ source('raw', 'transactions') }}) = 0

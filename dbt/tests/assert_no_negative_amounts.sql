@@ -1,1 +1,2 @@
-select * from {{ ref('stg_transactions') }} where amount < 0 or not isFinite(amount)
+select * from {{ ref('stg_transactions') }}
+where amount < 0 or not isFinite(amount)
